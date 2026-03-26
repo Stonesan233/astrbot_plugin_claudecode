@@ -1,9 +1,3 @@
-"""
-Claude Executor - Application layer facade for Claude Code execution.
-
-Orchestrates infrastructure components to execute Claude Code tasks.
-Implements dependency injection for testability.
-"""
 
 import asyncio
 import logging
@@ -38,36 +32,21 @@ class ClaudeExecutor:
     - ProcessRunner: Execute subprocess
     - OutputParser: Parse CLI output
     - StreamProcessor: Handle streaming output
-
-    All dependencies are injectable for testing.
     """
 
     def __init__(
         self,
         workspace: Path,
         config_manager: "ClaudeConfigManager" = None,
-        # Dependency injection
         command_builder: CommandBuilder = None,
         process_runner: ProcessRunner = None,
         output_parser: OutputParser = None,
         stream_processor: StreamProcessor = None,
     ):
-        """
-        Initialize executor with dependencies.
-
-        Args:
-            workspace: Working directory for execution
-            config_manager: Configuration manager
-            command_builder: Optional command builder (creates default if None)
-            process_runner: Optional process runner (creates default if None)
-            output_parser: Optional output parser (creates default if None)
-            stream_processor: Optional stream processor (creates default if None)
-        """
         self.workspace = workspace
         self.config_manager = config_manager
         self.workspace.mkdir(parents=True, exist_ok=True)
 
-        # Inject or create dependencies
         self._command_builder = command_builder or CommandBuilder()
         self._process_runner = process_runner or ProcessRunner()
         self._output_parser = output_parser or OutputParser()
@@ -77,32 +56,17 @@ class ClaudeExecutor:
 
     @property
     def config(self) -> ClaudeConfig:
-        """Get current configuration."""
         if self.config_manager:
             return self.config_manager.config
         return ClaudeConfig()
 
     def _resolve_timeout(self, timeout: int | None) -> int:
-        """Resolve timeout from parameter or config."""
         if timeout is not None:
             return timeout
-        return self.config.timeout_seconds or 120
+        return self.config.timeout_seconds or 300
 
     async def execute(self, task: str, timeout: int = None) -> dict:
-        """
-        Execute Claude Code task (legacy dict-based API).
-
-        Maintains backward compatibility with original API.
-
-        Args:
-            task: Task description
-            timeout: Execution timeout in seconds
-
-        Returns:
-            dict with keys: success, output, error, cost_usd, session_id
-        """
         result = await self.execute_typed(task, timeout)
-
         if result.is_ok():
             exec_result = result.unwrap()
             return {
@@ -124,16 +88,6 @@ class ClaudeExecutor:
         task: str,
         timeout: int | None = None,
     ) -> Result[ExecutionResult, ExecutionError]:
-        """
-        Execute Claude Code task with type-safe Result return.
-
-        Args:
-            task: Task description
-            timeout: Execution timeout in seconds
-
-        Returns:
-            Result[ExecutionResult, ExecutionError]
-        """
         task_preview = task[:50] + "..." if len(task) > 50 else task
         logger.info(f"[ClaudeExecutor] execute_typed task={task_preview}")
         start_time = time.time()
@@ -148,12 +102,18 @@ class ClaudeExecutor:
             stream=False,
         )
 
+        # Get environment for redirection (Isolated or Global)
+        env = {}
+        if self.config_manager:
+            env = self.config_manager.get_execution_env()
+
         try:
             # Execute
             stdout, stderr, returncode = await self._process_runner.run(
                 cmd_args=cmd_args,
                 cwd=self.workspace,
                 timeout=timeout,
+                env=env
             )
 
             duration_ms = (time.time() - start_time) * 1000
@@ -189,16 +149,6 @@ class ClaudeExecutor:
                 )
             )
 
-        except PermissionError as e:
-            logger.error(f"[ClaudeExecutor] Permission denied: {e}")
-            return err(
-                ExecutionError(
-                    code=ErrorCode.PERMISSION_DENIED,
-                    message=f"Permission denied: {e}",
-                    details={"workspace": str(self.workspace)},
-                )
-            )
-
         except Exception as e:
             logger.error(f"[ClaudeExecutor] Unexpected error: {e}")
             return err(
@@ -215,17 +165,6 @@ class ClaudeExecutor:
         timeout: int | None = None,
         on_progress: ProgressCallback | None = None,
     ) -> Result[ExecutionResult, ExecutionError]:
-        """
-        Execute Claude Code task with streaming progress.
-
-        Args:
-            task: Task description
-            timeout: Execution timeout in seconds
-            on_progress: Optional callback for progress updates
-
-        Returns:
-            Result[ExecutionResult, ExecutionError]
-        """
         task_preview = task[:50] + "..." if len(task) > 50 else task
         logger.info(f"[ClaudeExecutor] execute_stream task={task_preview}")
         start_time = time.time()
@@ -240,13 +179,23 @@ class ClaudeExecutor:
             stream=True,
         )
 
+        # Environment for redirection
+        env = {}
+        if self.config_manager:
+            env = self.config_manager.get_execution_env()
+
         try:
             # Start process
+            import os
+            full_env = os.environ.copy()
+            full_env.update(env)
+
             proc = await asyncio.create_subprocess_exec(
                 *cmd_args,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
                 cwd=str(self.workspace),
+                env=full_env
             )
 
             # Process stream with timeout
@@ -264,7 +213,7 @@ class ClaudeExecutor:
         except asyncio.TimeoutError:
             duration_ms = (time.time() - start_time) * 1000
             logger.warning(f"[ClaudeExecutor] Stream TIMEOUT after {timeout}s")
-            if proc:
+            if 'proc' in locals() and proc:
                 proc.kill()
                 await proc.wait()
             return err(
@@ -272,16 +221,6 @@ class ClaudeExecutor:
                     code=ErrorCode.TIMEOUT,
                     message=f"Task execution exceeded {timeout}s timeout",
                     details={"task_preview": task_preview, "timeout": timeout},
-                )
-            )
-
-        except FileNotFoundError:
-            logger.error("[ClaudeExecutor] Claude CLI not found")
-            return err(
-                ExecutionError(
-                    code=ErrorCode.NOT_INSTALLED,
-                    message="Claude CLI is not installed or not in PATH",
-                    details={"command": cmd_args[0]},
                 )
             )
 

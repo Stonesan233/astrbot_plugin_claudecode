@@ -1,168 +1,113 @@
-"""
-Claude Code 配置管理器
-
-This module manages Claude Code configuration with explicit validation
-and Result-based error handling following functional programming principles.
-"""
 
 import json
 import logging
+import os
 from pathlib import Path
 from typing import Any
 
 from .models import ClaudeConfig, IOError, Result, ValidationError, err, ok
+from .infrastructure.config.path_resolver import PathResolver
 
 logger = logging.getLogger("astrbot")
 
-
-# Validation Functions (Pure, Atomic)
-def validate_config(config: ClaudeConfig) -> Result[ClaudeConfig, ValidationError]:
-    """
-    Validate Claude configuration.
-
-    Args:
-        config: Configuration to validate
-
-    Returns:
-        Result containing validated config or validation error
-    """
-    logger.info(
-        f"[ENTRY] validate_config auth_present={bool(config.auth_token or config.api_key)}"
-    )
-
-    # Check authentication
-    if not config.auth_token and not config.api_key:
-        error = ValidationError("auth", "需要提供 auth_token 或 api_key")
-        logger.warning(f"[ERROR] validate_config: {error}")
-        return err(error)
-
-    # Check permission mode
-    valid_modes = ["default", "acceptEdits", "plan", "dontAsk"]
-    if config.permission_mode not in valid_modes:
-        error = ValidationError(
-            "permission_mode",
-            f"无效的权限模式: {config.permission_mode}, 有效值: {valid_modes}",
-        )
-        logger.warning(f"[ERROR] validate_config: {error}")
-        return err(error)
-
-    # Check timeout range
-    if config.timeout_seconds < 10 or config.timeout_seconds > 600:
-        error = ValidationError(
-            "timeout_seconds",
-            f"超时时间应在10-600秒之间, 当前值: {config.timeout_seconds}",
-        )
-        logger.warning(f"[ERROR] validate_config: {error}")
-        return err(error)
-
-    logger.info("[EXIT] validate_config return=success")
-    return ok(config)
-
-
 class ClaudeConfigManager:
-    """Claude Code 配置管理器"""
+    """Claude Code 配置管理器 (支持纯净隔离)"""
 
-    CLAUDE_DIR = Path.home() / ".claude"
-    SETTINGS_FILE = CLAUDE_DIR / "settings.json"
-    CLAUDE_JSON = Path.home() / ".claude.json"
-
-    def __init__(self, config: ClaudeConfig):
+    def __init__(self, config: ClaudeConfig, workspace: Path = None):
         self.config = config
+        self.workspace = workspace
+        self.global_resolver = PathResolver()
+        self.isolated_resolver = PathResolver(workspace) if workspace else self.global_resolver
+        
+        # 判定是否需要隔离
+        self.is_isolated = any([
+            config.auth_token,
+            config.api_key,
+            config.api_base_url,
+            config.model,
+            config.timeout_seconds
+        ])
 
     @classmethod
-    def from_plugin_config(cls, plugin_config: dict[str, Any]) -> "ClaudeConfigManager":
-        """
-        Create manager from plugin configuration.
-
-        Args:
-            plugin_config: Raw plugin configuration dictionary
-
-        Returns:
-            ClaudeConfigManager instance
-        """
-        # Parse configuration inline
-        allowed = plugin_config.get("allowed_tools", "")
-        disallowed = plugin_config.get("disallowed_tools", "")
-        add_dirs = plugin_config.get("add_dirs", "")
+    def from_plugin_config(cls, plugin_config: dict[str, Any], workspace: Path = None) -> "ClaudeConfigManager":
+        """从插件配置创建管理器。"""
+        def get_val(key: str):
+            val = plugin_config.get(key)
+            return val if val and str(val).strip() else None
 
         config = ClaudeConfig(
-            auth_token=plugin_config.get("auth_token", ""),
-            api_key=plugin_config.get("api_key", ""),
-            api_base_url=plugin_config.get("api_base_url", ""),
-            model=plugin_config.get("model", ""),
-            allowed_tools=[t.strip() for t in allowed.split(",") if t.strip()],
-            disallowed_tools=[t.strip() for t in disallowed.split(",") if t.strip()],
-            permission_mode=plugin_config.get("permission_mode", "default"),
-            add_dirs=[d.strip() for d in add_dirs.split(",") if d.strip()],
-            max_turns=plugin_config.get("max_turns", 10),
-            timeout_seconds=plugin_config.get("timeout_seconds", 300),
+            auth_token=get_val("auth_token"),
+            api_key=get_val("api_key"),
+            api_base_url=get_val("api_base_url"),
+            model=get_val("model"),
+            allowed_tools=[t.strip() for t in plugin_config.get("allowed_tools", "").split(",") if t.strip()] or None,
+            disallowed_tools=[t.strip() for t in plugin_config.get("disallowed_tools", "").split(",") if t.strip()] or None,
+            permission_mode=get_val("permission_mode"),
+            add_dirs=[d.strip() for d in plugin_config.get("add_dirs", "").split(",") if d.strip()] or None,
+            max_turns=plugin_config.get("max_turns") if plugin_config.get("max_turns") else None,
+            timeout_seconds=plugin_config.get("timeout_seconds") if plugin_config.get("timeout_seconds") else None,
         )
-        return cls(config)
+        return cls(config, workspace)
+
+    def get_execution_env(self) -> dict[str, str]:
+        """获取执行环境。如果没开启隔离，返回空字典（使用系统默认环境）。"""
+        import sys
+        env_key = "USERPROFILE" if sys.platform == "win32" else "HOME"
+        
+        if self.is_isolated and self.workspace:
+            return {env_key: str(self.workspace)}
+        return {}
 
     def apply_config(self) -> Result[None, IOError]:
-        """
-        Apply configuration to Claude Code.
+        """应用配置。隔离模式下直接生成纯净配置，绝不参考全局底稿。"""
+        if not self.is_isolated:
+            logger.info("[PROCESS] Mode: Global (Using system-wide Claude config)")
+            return ok(None)
 
-        Returns:
-            Result indicating success or I/O error
-        """
-        logger.info(f"[ENTRY] apply_config config={self.get_config_summary()}")
+        logger.info(f"[ENTRY] apply_config (Fresh Isolation) target={self.workspace}")
 
         try:
-            # Create .claude directory
-            self.CLAUDE_DIR.mkdir(parents=True, exist_ok=True)
+            # 1. 确保私有目录存在
+            self.isolated_resolver.claude_dir.mkdir(parents=True, exist_ok=True)
 
-            # Build settings inline
-            env = {
-                "API_TIMEOUT_MS": str(self.config.timeout_seconds * 1000),
-                "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
-            }
+            # 2. 从零开始构建配置 (不再读取全局 settings.json)
+            settings = {"env": {}}
+            env = settings["env"]
 
-            # Set authentication
+            # 3. 仅填入插件中明确指定的项
+            if self.config.timeout_seconds:
+                env["API_TIMEOUT_MS"] = str(self.config.timeout_seconds * 1000)
+            
+            # 插件运行的建议项
+            env["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] = "1"
+
             if self.config.auth_token:
                 env["ANTHROPIC_AUTH_TOKEN"] = self.config.auth_token
             elif self.config.api_key:
                 env["ANTHROPIC_API_KEY"] = self.config.api_key
 
-            # Set Base URL
             if self.config.api_base_url:
                 env["ANTHROPIC_BASE_URL"] = self.config.api_base_url
+            
+            if self.config.model:
+                env["ANTHROPIC_MODEL"] = self.config.model
 
-            # Write settings.json
-            settings = {"env": env}
-            self.SETTINGS_FILE.write_text(
-                json.dumps(settings, indent=2), encoding="utf-8"
-            )
+            # 4. 写入私有文件
+            self.isolated_resolver.settings_file.write_text(json.dumps(settings, indent=2), encoding="utf-8")
 
-            # Write .claude.json
+            # 5. 生成纯净的 .claude.json 避免首屏欢迎词
             claude_json = {"hasCompletedOnboarding": True}
-            self.CLAUDE_JSON.write_text(
-                json.dumps(claude_json, indent=2), encoding="utf-8"
-            )
+            self.isolated_resolver.claude_json.write_text(json.dumps(claude_json, indent=2), encoding="utf-8")
 
-            logger.info("[EXIT] apply_config return=success")
+            logger.info(f"[EXIT] apply_config success. Fresh private config: {self.isolated_resolver.settings_file}")
             return ok(None)
 
-        except PermissionError as e:
-            error = IOError(str(self.CLAUDE_DIR), "write", f"Permission denied: {e}")
-            logger.error(f"[ERROR] apply_config: {error}")
-            return err(error)
-
         except Exception as e:
-            error = IOError(
-                str(self.CLAUDE_DIR), "write", f"Failed to apply config: {e}"
-            )
+            error = IOError(str(self.workspace), "write", str(e))
             logger.error(f"[ERROR] apply_config: {error}")
             return err(error)
 
     def get_config_summary(self) -> str:
         """获取配置摘要"""
-        if self.config.auth_token:
-            cred_status = "Auth Token: 已配置"
-        elif self.config.api_key:
-            cred_status = "API Key: 已配置"
-        else:
-            cred_status = "认证: 未配置"
-
-        base_url = self.config.api_base_url or "官方"
-        return f"{cred_status}, Base URL: {base_url}"
+        mode = "隔离模式 (纯净)" if self.is_isolated else "全局模式"
+        return f"运行模式: {mode}"

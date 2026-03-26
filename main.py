@@ -61,7 +61,7 @@ class ClaudeCodePlugin(Star):
         logger.info(f"[PROCESS] Workspace initialized: {self.workspace}")
 
         # Initialize components (using new modular architecture)
-        self.config_manager = ClaudeConfigManager.from_plugin_config(config)
+        self.config_manager = ClaudeConfigManager.from_plugin_config(config, self.workspace)
         self.cli_installer = CLIInstaller()
         self.marketplace_manager = MarketplaceManager()
         self.claude_executor = ClaudeExecutor(

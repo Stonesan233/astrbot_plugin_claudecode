@@ -37,6 +37,7 @@ class ProcessRunner:
         cmd_args: list[str],
         cwd: Path,
         timeout: int,
+        env: dict[str, str] = None,
     ) -> tuple[str, str, int]:
         """
         Run command and return output.
@@ -45,23 +46,26 @@ class ProcessRunner:
             cmd_args: Command arguments
             cwd: Working directory
             timeout: Timeout in seconds
+            env: Optional environment variables
 
         Returns:
             Tuple of (stdout, stderr, returncode)
-
-        Raises:
-            asyncio.TimeoutError: If execution exceeds timeout
-            FileNotFoundError: If command not found
-            PermissionError: If permission denied
         """
         cmd_args = _resolve_cmd_args(cmd_args)
         logger.debug(f"[ProcessRunner] Executing: {cmd_args[0]} in {cwd}")
+
+        # Merge with current environment
+        import os
+        full_env = os.environ.copy()
+        if env:
+            full_env.update(env)
 
         proc = await asyncio.create_subprocess_exec(
             *cmd_args,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             cwd=str(cwd),
+            env=full_env,
         )
 
         stdout_bytes, stderr_bytes = await asyncio.wait_for(

@@ -244,16 +244,16 @@ class ClaudeConfig:
         timeout_seconds: Execution timeout in seconds
     """
 
-    auth_token: str = ""
-    api_key: str = ""
-    api_base_url: str = ""
-    model: str = ""
-    allowed_tools: list = field(default_factory=list)
-    disallowed_tools: list = field(default_factory=list)
-    permission_mode: str = "default"
-    add_dirs: list = field(default_factory=list)
-    max_turns: int = 10
-    timeout_seconds: int = 300
+    auth_token: str | None = None
+    api_key: str | None = None
+    api_base_url: str | None = None
+    model: str | None = None
+    allowed_tools: list | None = None
+    disallowed_tools: list | None = None
+    permission_mode: str | None = None
+    add_dirs: list | None = None
+    max_turns: int | None = None
+    timeout_seconds: int | None = None
 
 
 # =============================================================================

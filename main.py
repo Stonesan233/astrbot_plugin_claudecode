@@ -23,11 +23,11 @@ from .infrastructure.http import ServerManager
 from .infrastructure.installer import CLIInstaller, MarketplaceManager
 
 PLUGIN_DIR = Path(__file__).parent
-VERSION = "2.2.0"
+VERSION = "3.0.0"
 
 
 @register(
-    "astrbot_plugin_claudecode", "Claude", "Claude Code as LLM Tool", VERSION
+    "astrbot_plugin_claude_code_custom", "Stonesan", "Claude Code CLI 自定义增强版", VERSION
 )
 class ClaudeCodePlugin(Star):
     """

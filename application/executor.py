@@ -63,7 +63,7 @@ class ClaudeExecutor:
     def _resolve_timeout(self, timeout: int | None) -> int:
         if timeout is not None:
             return timeout
-        return self.config.timeout_seconds or 300
+        return self.config.timeout_seconds or 1800
 
     async def execute(self, task: str, timeout: int = None) -> dict:
         result = await self.execute_typed(task, timeout)

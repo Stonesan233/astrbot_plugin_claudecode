@@ -27,7 +27,7 @@ class ConfigValidator:
 
     VALID_PERMISSION_MODES = ["default", "acceptEdits", "plan", "dontAsk"]
     MIN_TIMEOUT = 10
-    MAX_TIMEOUT = 600
+    MAX_TIMEOUT = 7200
 
     def validate(self, config: ClaudeConfig) -> Result[ClaudeConfig, ValidationError]:
         """

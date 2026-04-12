@@ -34,6 +34,15 @@ class ClaudeConfigManager:
             val = plugin_config.get(key)
             return val if val and str(val).strip() else None
 
+        # Read with upper-bound clamping
+        raw_max_turns = plugin_config.get("max_turns")
+        max_turns = min(int(raw_max_turns), 500) if raw_max_turns else None
+
+        raw_timeout = plugin_config.get("timeout_seconds")
+        timeout_seconds = min(int(raw_timeout), 7200) if raw_timeout else None
+
+        logger.info(f"当前任务最大轮次: {max_turns}, 超时时间: {timeout_seconds}秒")
+
         config = ClaudeConfig(
             auth_token=get_val("auth_token"),
             api_key=get_val("api_key"),
@@ -43,8 +52,8 @@ class ClaudeConfigManager:
             disallowed_tools=[t.strip() for t in plugin_config.get("disallowed_tools", "").split(",") if t.strip()] or None,
             permission_mode=get_val("permission_mode"),
             add_dirs=[d.strip() for d in plugin_config.get("add_dirs", "").split(",") if d.strip()] or None,
-            max_turns=plugin_config.get("max_turns") if plugin_config.get("max_turns") else None,
-            timeout_seconds=plugin_config.get("timeout_seconds") if plugin_config.get("timeout_seconds") else None,
+            max_turns=max_turns,
+            timeout_seconds=timeout_seconds,
         )
         return cls(config, workspace)
 

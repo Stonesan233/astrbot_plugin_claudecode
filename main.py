@@ -13,7 +13,7 @@ from pathlib import Path
 
 from astrbot.api import AstrBotConfig, logger
 from astrbot.api.event import AstrMessageEvent, filter
-from astrbot.api.star import Context, Star, StarTools, register
+from astrbot.api.star import Context, Star, StarTools
 
 # Use new modular architecture
 from .application import ClaudeExecutor
@@ -26,9 +26,6 @@ PLUGIN_DIR = Path(__file__).parent
 VERSION = "3.0.0"
 
 
-@register(
-    "astrbot_plugin_claude_code_custom", "Stonesan", "Claude Code CLI 自定义增强版", VERSION
-)
 class ClaudeCodePlugin(Star):
     """
     Claude Code Plugin - Integrates Claude Code CLI as LLM function tool.

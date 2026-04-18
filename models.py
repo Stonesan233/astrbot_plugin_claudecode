@@ -254,6 +254,7 @@ class ClaudeConfig:
     add_dirs: list | None = None
     max_turns: int | None = None
     timeout_seconds: int | None = None
+    dangerously_skip_permissions: bool = False
 
 
 # =============================================================================

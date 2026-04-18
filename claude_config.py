@@ -54,6 +54,7 @@ class ClaudeConfigManager:
             add_dirs=[d.strip() for d in plugin_config.get("add_dirs", "").split(",") if d.strip()] or None,
             max_turns=max_turns,
             timeout_seconds=timeout_seconds,
+            dangerously_skip_permissions=bool(plugin_config.get("dangerously_skip_permissions", False)),
         )
         return cls(config, workspace)
 

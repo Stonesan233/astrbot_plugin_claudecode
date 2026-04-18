@@ -77,5 +77,10 @@
     "type": "int",
     "description": "HTTP服务器端口(用于网页部署,0表示禁用)",
     "default": 6200
+  },
+  "dangerously_skip_permissions": {
+    "type": "bool",
+    "description": "危险模式 - 跳过所有权限确认,允许无提示执行git push等Bash操作。仅在信任的环境中使用!",
+    "default": false
   }
 }

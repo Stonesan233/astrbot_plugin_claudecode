@@ -90,6 +90,12 @@ class ClaudeCodePlugin(Star):
         )
         logger.info(f"[PROCESS] {self.config_manager.get_config_summary()}")
 
+        if config.get("dangerously_skip_permissions", False):
+            logger.warning(
+                "[WARNING] 危险权限模式已启用，所有 Bash 和文件操作将无提示执行，"
+                "请确保项目目录安全！"
+            )
+
     def _handle_init_done(self, task):
         """Handle async initialization completion."""
         try:

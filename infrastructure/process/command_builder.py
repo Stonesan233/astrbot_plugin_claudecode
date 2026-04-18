@@ -76,6 +76,8 @@ class CommandBuilder:
 
     def _build_permission_args(self, config: "ClaudeConfig") -> list[str]:
         """Build permission mode arguments."""
+        if getattr(config, "dangerously_skip_permissions", False):
+            return ["--dangerously-skip-permissions"]
         if config.permission_mode and config.permission_mode != "default":
             return ["--permission-mode", config.permission_mode]
         return []

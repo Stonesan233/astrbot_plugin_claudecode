@@ -53,6 +53,7 @@ class CommandBuilder:
             cmd_args.append("--verbose")
 
         # Add config-based arguments
+        self._skip_perm = getattr(config, "dangerously_skip_permissions", False)
         cmd_args.extend(self._build_tool_args(config, workspace))
         cmd_args.extend(self._build_permission_args(config))
         cmd_args.extend(self._build_dir_args(config))
@@ -102,7 +103,11 @@ class CommandBuilder:
 
     def _process_allowed_tools(self, tools: list, workspace: Path) -> str:
         """
-        Process allowed tools list, auto-add workspace path restriction for Bash.
+        Process allowed tools list.
+
+        When dangerously_skip_permissions is enabled, Bash is allowed
+        without path restriction (the user explicitly opted in).
+        Otherwise, auto-add workspace path restriction for Bash.
 
         Args:
             tools: List of tool names
@@ -111,12 +116,15 @@ class CommandBuilder:
         Returns:
             Comma-separated tool list with restrictions
         """
+        skip = getattr(self, '_skip_perm', False)
         processed = []
         for tool in tools:
             if tool == "Bash":
-                # Auto-add workspace path restriction
-                workspace_path = str(workspace).replace("\\", "/")
-                processed.append(f"Bash({workspace_path}/*)")
+                if skip:
+                    processed.append("Bash")
+                else:
+                    workspace_path = str(workspace).replace("\\", "/")
+                    processed.append(f"Bash({workspace_path}/*)")
             else:
                 processed.append(tool)
         return ",".join(processed)

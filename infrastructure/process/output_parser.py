@@ -117,6 +117,9 @@ class OutputParser:
     ) -> Result[ExecutionResult, ExecutionError]:
         """Handle JSON parse errors with fallback logic."""
         logger.warning(f"[OutputParser] Failed to parse JSON: {error}")
+        logger.debug(f"[OutputParser] stdout({len(stdout)}): {stdout[:500]}")
+        logger.debug(f"[OutputParser] stderr({len(stderr)}): {stderr[:500]}")
+        logger.debug(f"[OutputParser] returncode: {returncode}")
 
         if returncode is not None and returncode != 0:
             return err(

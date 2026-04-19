@@ -102,14 +102,14 @@ class ClaudeExecutor:
             stream=False,
         )
 
-        logger.info(f"[ClaudeExecutor] cwd={self.workspace} cmd={' '.join(cmd_args[:12])}...")
-        logger.info(f"[ClaudeExecutor] config: permission_mode={self.config.permission_mode}, dangerously_skip={getattr(self.config, 'dangerously_skip_permissions', False)}, model={self.config.model}")
-        logger.info(f"[ClaudeExecutor] env_redirect={bool(env)}")
-
         # Get environment for redirection (Isolated or Global)
         env = {}
         if self.config_manager:
             env = self.config_manager.get_execution_env()
+
+        logger.info(f"[ClaudeExecutor] cwd={self.workspace} cmd={' '.join(cmd_args[:12])}...")
+        logger.info(f"[ClaudeExecutor] config: permission_mode={self.config.permission_mode}, dangerously_skip={getattr(self.config, 'dangerously_skip_permissions', False)}, model={self.config.model}")
+        logger.info(f"[ClaudeExecutor] env_redirect={bool(env)}")
 
         try:
             # Execute
